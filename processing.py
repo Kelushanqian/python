@@ -4,7 +4,6 @@
 import cv2
 import numpy as np
 from ultralytics import YOLO
-from mobile_sam import sam_model_registry, SamPredictor
 
 _yolo_model = None
 
