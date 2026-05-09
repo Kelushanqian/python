@@ -28,5 +28,4 @@ def worker_loop():
                 print(f"处理失败 id={image_id}: {e}")
                 update_status(image_id, "failed")
         else:
-            print("暂无任务，等待 10 秒...")
             time.sleep(10)
