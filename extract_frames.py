@@ -7,7 +7,7 @@ import time
 from storage import save_original_image
 from database import insert_image
 
-def extract_and_upload(video_path, interval_seconds=5, drone_id="1", x=0, y=0):
+def extract_and_upload(video_path, interval_seconds=1, drone_id="1", x=0, y=0):
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         print(f"打不开视频：{video_path}")

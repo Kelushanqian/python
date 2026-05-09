@@ -6,7 +6,6 @@ import numpy as np
 from ultralytics import YOLO
 from mobile_sam import sam_model_registry, SamPredictor
 
-_sam_predictor = None
 _yolo_model = None
 
 # 加载 YOLO 模型
@@ -16,19 +15,10 @@ def get_yolo_model():
         _yolo_model = YOLO("best.onnx", task="detect")
     return _yolo_model
 
-# 加载 SAM 模型
-def get_sam_predictor():
-    global _sam_predictor
-    if _sam_predictor is None:
-        sam = sam_model_registry["vit_t"](checkpoint="mobile_sam.pt")
-        sam.eval()
-        _sam_predictor = SamPredictor(sam)
-    return _sam_predictor
-
 # YOLO 检测，返回 [{'box': [x1,y1,x2,y2], 'conf': float, 'cls': int}, ...]
-def detect_diseases(img_path):
+def detect_diseases(img):
     model = get_yolo_model()
-    results = model(img_path)
+    results = model(img)
     detections = []
     for box in results[0].boxes:
         x1, y1, x2, y2 = box.xyxy[0].tolist()
@@ -39,35 +29,16 @@ def detect_diseases(img_path):
         })
     return detections
 
-# 分割（有 YOLO 框时用框中心点辅助 SAM）
+# 分割
 def get_leaf_mask(img, boxes=None):
-    predictor = get_sam_predictor()
-    predictor.set_image(img)
-
     h, w = img.shape[:2]
-    cx, cy = w // 2, h // 2
-
-    points = [
-        [cx, cy],
-        [cx, cy - h // 4],
-        [cx, cy + h // 4],
-        [cx - w // 4, cy],
-        [cx + w // 4, cy],
-    ]
-
+    mask = np.zeros((h, w), dtype=np.uint8)
     if boxes:
         for x1, y1, x2, y2 in boxes:
-            points.append([(x1 + x2) // 2, (y1 + y2) // 2])
-
-    center_points = np.array(points)
-    center_labels = np.ones(len(points), dtype=int)
-
-    masks, _, _ = predictor.predict(
-        point_coords=center_points,
-        point_labels=center_labels,
-        multimask_output=False,
-    )
-    return masks[0].astype(np.uint8)
+            mask[int(y1):int(y2), int(x1):int(x2)] = 1
+    else:
+        mask[:] = 1  # 没检测到就全图当前景
+    return mask
 
 def analyze_image(img):
     lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
@@ -137,13 +108,14 @@ def process_image_file(original_path):
     if img is None:
         return None
 
-    img = apply_denoise(img)
+    img_for_detect = apply_denoise(img)
+    img_for_detect = apply_clahe(img_for_detect, clip_limit=2.0)
 
     # YOLO 检测
-    detections = detect_diseases(original_path)
+    detections = detect_diseases(img_for_detect)
     boxes = [d["box"] for d in detections]
 
-    # SAM 分割（用 YOLO 框中心点辅助）
+    # 分割
     mask = get_leaf_mask(img, boxes=boxes if boxes else None)
 
     brightness, contrast, saturation = analyze_image(img)
